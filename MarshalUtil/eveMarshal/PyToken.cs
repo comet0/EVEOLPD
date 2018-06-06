@@ -4,7 +4,7 @@ using System.Text;
 namespace eveMarshal
 {
 
-    public class PyToken : PyObject
+    public class PyToken : PyRep
     {
         public byte[] RawToken { get; set; }
         public string Token { get; set; }
@@ -44,6 +44,18 @@ namespace eveMarshal
             else
                 throw new InvalidDataException("Fill either RawToken or Token with data for encoding");
         }
-    }
+
+        public override string ToString()
+        {
+            if (Token.Length <= 0)
+                return "<empty token>";
+            return "<" + Token + ">";
+        }
+
+        public override string dump(string prefix)
+        {
+            return "[PyToken " + Token + "]" + PrettyPrinter.PrintRawData(this);
+        }
+   }
 
 }

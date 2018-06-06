@@ -1,14 +1,15 @@
 ﻿using System.IO;
+using System.Text;
 
 namespace eveMarshal
 {
 
-    public class PyChecksumedStream : PyObject
+    public class PyChecksumedStream : PyRep
     {
         public uint Checksum { get; private set; }
-        public PyObject Data { get; private set; }
+        public PyRep Data { get; private set; }
 
-        public PyChecksumedStream(PyObject data)
+        public PyChecksumedStream(PyRep data)
             : base(PyObjectType.ChecksumedStream)
         {
             Data = data;
@@ -36,6 +37,14 @@ namespace eveMarshal
             Checksum = Adler32.Checksum(data);
             output.Write(Checksum);
             output.Write(data);
+        }
+
+        public override string dump(string prefix)
+        {
+            StringBuilder builder = new StringBuilder();
+            builder.AppendLine("[PyChecksumedStream Checksum: " + Checksum + "]");
+            PrettyPrinter.Print(builder, prefix + PrettyPrinter.Spacer, Data);
+            return builder.ToString();
         }
     }
 

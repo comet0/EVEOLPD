@@ -6,17 +6,17 @@ using System.Text;
 namespace eveMarshal
 {
     
-    public class PyList : PyObject, IEnumerable<PyObject>
+    public class PyList : PyRep, IEnumerable<PyRep>
     {
-        public List<PyObject> Items { get; private set; }
+        public List<PyRep> Items { get; private set; }
 
         public PyList()
             : base(PyObjectType.List)
         {
-            Items = new List<PyObject>();
+            Items = new List<PyRep>();
         }
 
-        public PyList(List<PyObject> items)
+        public PyList(List<PyRep> items)
             : base(PyObjectType.List)
         {
             Items = items;
@@ -40,7 +40,7 @@ namespace eveMarshal
 
             if (count >= 0)
             {
-                Items = new List<PyObject>(count);
+                Items = new List<PyRep>(count);
                 for (int i = 0; i < count; i++)
                     Items.Add(context.ReadObject(source));
             }
@@ -65,7 +65,7 @@ namespace eveMarshal
             }
         }
 
-        public IEnumerator<PyObject> GetEnumerator()
+        public IEnumerator<PyRep> GetEnumerator()
         {
             return Items.GetEnumerator();
         }
@@ -83,6 +83,18 @@ namespace eveMarshal
         {
             return GetEnumerator();
         }
+
+        public override string dump(string prefix)
+        {
+            StringBuilder builder = new StringBuilder();
+            builder.AppendLine("[PyList " + Items.Count + " items]" + PrettyPrinter.PrintRawData(this));
+            foreach (var item in Items)
+            {
+                PrettyPrinter.Print(builder, prefix + PrettyPrinter.Spacer, item);
+            }
+            return builder.ToString();
+        }
+
     }
 
 }

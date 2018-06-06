@@ -1,4 +1,5 @@
-﻿using System;
+﻿using eveMarshal.Extended;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -18,15 +19,15 @@ namespace eveMarshal
 
         public bool DebugMode { get; set; }
 
-        // used to fix SavedStreamElement fuckups
-        public bool NeedObjectEx { get; set; }
-
         public Dictionary<int, int> SavedElementsMap { get; private set; }
-        public PyObject[] SavedElements { get; private set; }
+        public PyRep[] SavedElements { get; private set; }
 
         private int _currentSaveIndex;
 
-        public PyObject Process(byte[] data)
+        public bool analizeInput = true;
+        public StringBuilder unknown = new StringBuilder();
+
+        public PyRep Process(byte[] data)
         {
             if (data == null)
                 return null;
@@ -35,7 +36,7 @@ namespace eveMarshal
             return Process(new BinaryReader(new MemoryStream(data), Encoding.ASCII));
         }
 
-        private PyObject Process(BinaryReader reader)
+        private PyRep Process(BinaryReader reader)
         {
             var magic = reader.ReadByte();
             if (magic != HeaderByte)
@@ -56,39 +57,42 @@ namespace eveMarshal
                         throw new InvalidDataException("Bogus map data in marshal stream");
                     SavedElementsMap.Add(i, index);
                 }
-                SavedElements = new PyObject[saveCount];
+                SavedElements = new PyRep[saveCount];
                 reader.BaseStream.Seek(currentPos, SeekOrigin.Begin);
             }
 
             return ReadObject(reader);
         }
 
-        private PyObject CreateAndDecode<T>(BinaryReader reader, MarshalOpcode op) where T : PyObject, new()
+        private PyRep CreateAndDecode<T>(BinaryReader reader, MarshalOpcode op) where T : PyRep, new()
         {
             // -1 for the opcode
             var ret = new T { RawOffset = reader.BaseStream.Position - 1 };
             ret.Decode(this, op, reader);
-            if (PyObject.EnableInspection)
+            if (PyRep.EnableInspection)
             {
                 var postOffset = reader.BaseStream.Position;
                 reader.BaseStream.Seek(ret.RawOffset, SeekOrigin.Begin);
                 ret.RawSource = reader.ReadBytes((int)(postOffset - ret.RawOffset));
             }
 
-            // lets just get rid of those here and now
-            if (ret is PySubStream)
-                return (ret as PySubStream).Data;
-
             return ret;
         }
 
-        public PyObject ReadObject(BinaryReader reader)
+        public PyRep ReadObject(BinaryReader reader)
         {
             var header = reader.ReadByte();
             //bool flagUnknown = (header & UnknownMask) > 0;
             bool flagSave = (header & SaveMask) > 0;
             var opcode = (MarshalOpcode)(header & OpcodeMask);
-            PyObject ret;
+            int saveIndex = 0;
+            if (flagSave)
+            {
+                // Get save index now.
+                // If there are nested saves the indexes will be wrong if we wait.
+                saveIndex = SavedElementsMap[_currentSaveIndex++];
+            }
+            PyRep ret;
             //Console.WriteLine("OPCODE: "+opcode);
             switch (opcode)
             {
@@ -154,7 +158,7 @@ namespace eveMarshal
                     ret = CreateAndDecode<PyDict>(reader, opcode);
                     break;
                 case MarshalOpcode.Object:
-                    ret = CreateAndDecode<PyObjectData>(reader, opcode);
+                    ret = CreateAndDecode<PyObject>(reader, opcode);
                     break;
                 case MarshalOpcode.ChecksumedStream:
                     ret = CreateAndDecode<PyChecksumedStream>(reader, opcode);
@@ -165,23 +169,6 @@ namespace eveMarshal
                 case MarshalOpcode.SavedStreamElement:
                     uint index = reader.ReadSizeEx();
                     ret = SavedElements[index - 1];
-                    if (NeedObjectEx && !(ret is PyObjectEx))
-                    {
-                        ret = SavedElements[SavedElementsMap[(int)index] - 1];
-                        if (!(ret is PyObjectEx))
-                        {
-                            // ok, this is seriously bad. our last way out is to search for an ObjectEx
-                            foreach (var savedObj in SavedElements)
-                            {
-                                if (savedObj is PyObjectEx)
-                                {
-                                    ret = savedObj;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    NeedObjectEx = false;
                     break;
                 case MarshalOpcode.ObjectEx1:
                 case MarshalOpcode.ObjectEx2:
@@ -196,9 +183,15 @@ namespace eveMarshal
 
             if (flagSave)
             {
-                var nth = _currentSaveIndex++;
-                var saveIndex = SavedElementsMap[nth];
-                SavedElements[saveIndex - 1] = ret;
+                if (saveIndex == 0)
+                {
+                    // This only seams to occure in GPSTransport packets when the server shuts down.
+                    saveIndex = 1;
+                }
+                if (saveIndex > 0)
+                {
+                    SavedElements[saveIndex - 1] = ret;
+                }
             }
 
             if (DebugMode)
@@ -208,6 +201,10 @@ namespace eveMarshal
                 Console.ReadLine();
             }
 
+            if (analizeInput)
+            {
+                return analyse(ret);
+            }
             return ret;
         }
 
@@ -216,6 +213,202 @@ namespace eveMarshal
             var un = new Unmarshal();
             return un.Process(data) as T;
         }
+
+        private PyRep analyse(PyRep obj)
+        {
+            try
+            {
+                if (obj is PyObjectEx)
+                {
+                    bool usedList, usedDict;
+                    PyRep res = obj;
+                    PyObjectEx ex = obj as PyObjectEx;
+                    if (!ex.IsType2)
+                    {
+                        res = analyseType1(ex, out usedList, out usedDict);
+                    }
+                    else
+                    {
+                        res = analyseType2(ex, out usedList, out usedDict);
+                    }
+                    if (res != obj)
+                    {
+                        if (!usedList)
+                        {
+                            if (ex.List != null && ex.List.Count > 0)
+                            {
+                                unknown.AppendLine("Unused List item in " + res.GetType());
+                            }
+                        }
+                        if (!usedDict)
+                        {
+                            if (ex.Dictionary != null && ex.Dictionary.Count > 0)
+                            {
+                                unknown.AppendLine("Unused dictionary item in " + res.GetType());
+                            }
+                        }
+                    }
+                    return res;
+                }
+            }
+            catch (InvalidDataException)
+            {
+                return obj;
+            }
+            return obj;
+        }
+
+        private PyRep analyseType1(PyObjectEx obj, out bool usedList, out bool usedDict)
+        {
+            usedDict = false;
+            usedList = false;
+            // Type1
+            PyTuple headerTuple = obj.Header as PyTuple;
+            if (headerTuple != null && headerTuple.Items.Count > 1)
+            {
+                int headerCount = headerTuple.Items.Count;
+                PyToken token = headerTuple.Items[0] as PyToken;
+                if (token != null)
+                {
+                    PyTuple tuple1 = null;
+                    int tuple1Count = 0;
+                    if (headerCount > 1)
+                    {
+                        tuple1 = headerTuple.Items[1] as PyTuple;
+                        if (tuple1 != null)
+                        {
+                            if (headerCount == 3 && token.Token == "eveexceptions.UserError")
+                            {
+                                return new UserError(tuple1, headerTuple.Items[2] as PyDict);
+                            }
+                            tuple1Count = tuple1.Items.Count;
+                            if (tuple1Count == 0)
+                            {
+                                if (headerCount == 3 && token.Token == "carbon.common.script.net.machoNetExceptions.WrongMachoNode")
+                                {
+                                        return new WrongMachoNode(headerTuple.Items[2] as PyDict);
+                                }
+                            }
+                            if (tuple1Count == 1)
+                            {
+                                if (token.Token == "blue.DBRowDescriptor")
+                                {
+                                    return new DBRowDescriptor(headerTuple);
+                                }
+                                PyRep item1 = tuple1.Items[0];
+                                if (item1 != null)
+                                {
+                                    if (token.Token == "__builtin__.set")
+                                    {
+                                        return new BuiltinSet(item1 as PyList);
+                                    }
+                                    if (headerCount == 2 && token.Token == "collections.defaultdict")
+                                    {
+                                            PyToken tupleToken = item1 as PyToken;
+                                            if (tupleToken.Token == "__builtin__.set")
+                                            {
+                                                usedDict = true;
+                                                return new DefaultDict(obj.Dictionary);
+                                            }
+                                    }
+                                    if (token.Token == "carbon.common.script.net.objectCaching.CacheOK")
+                                    {
+                                        if (item1.StringValue == "CacheOK")
+                                        {
+                                            return new CacheOK();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (token.Token == "carbon.common.script.net.GPSExceptions.GPSTransportClosed")
+                    {
+                        return obj;
+                    }
+                    unknown.AppendLine("Unknown or malformed token: " + token.Token);
+                }
+            }
+            return obj;
+        }
+
+        private PyRep analyseType2(PyObjectEx obj, out bool usedList, out bool usedDict)
+        {
+            usedDict = false;
+            usedList = false;
+            // type 2
+            PyTuple headerTuple = obj.Header as PyTuple;
+            if (headerTuple != null && headerTuple.Items.Count > 1)
+            {
+                int headerCount = headerTuple.Items.Count;
+                PyDict dict = headerTuple.Items[1] as PyDict;
+                PyToken token = null;
+                PyTuple tokenTuple = headerTuple.Items[0] as PyTuple;
+                if (tokenTuple != null && tokenTuple.Items.Count == 1)
+                {
+                    token = tokenTuple.Items[0] as PyToken;
+                }
+                if (token != null)
+                {
+                    if(headerCount != 2)
+                    {
+                        unknown.AppendLine("PyObjectEx Type2: headerCount=" + headerCount + " token: " + token.Token);
+                    }
+                    if (headerCount == 2 && token.Token == "carbon.common.script.sys.crowset.CRowset")
+                    {
+                        usedList = true;
+                        if (dict.Dictionary.Count > 1)
+                        {
+                            unknown.AppendLine("PyObjectEx Type2: Extra parameters in dict for CRowset");
+                        }
+                        return new CRowSet(dict, obj.List);
+                    }
+                    if (headerCount == 2 && token.Token == "carbon.common.script.sys.crowset.CIndexedRowset")
+                    {
+                        usedDict = true;
+                        if(dict.Dictionary.Count > 2)
+                        {
+                            unknown.AppendLine("PyObjectEx Type2: Extra parameters in dict for CIndexedRowset");
+                        }
+                        return new CIndexedRowset(dict, obj.Dictionary);
+                    }
+                    if (token.Token == "eve.common.script.dogma.effect.BrainEffect")
+                    {
+                        return obj;
+                    }
+                    if (token.Token == "industry.job.Location")
+                    {
+                        return obj;
+                    }
+                    if (token.Token == "eve.common.script.sys.rowset.RowDict")
+                    {
+                        return obj;
+                    }
+                    if (token.Token == "carbon.common.script.sys.crowset.CFilterRowset")
+                    {
+                        return obj;
+                    }
+                    if (token.Token == "eve.common.script.sys.rowset.RowList")
+                    {
+                        return obj;
+                    }
+                    if (token.Token == "eve.common.script.util.pagedCollection.PagedResultSet")
+                    {
+                        return obj;
+                    }
+                    if (token.Token == "shipskins.storage.LicensedSkin")
+                    {
+                        return obj;
+                    }
+                    if (token.Token == "seasons.common.challenge.Challenge")
+                    {
+                        return obj;
+                    }
+                    unknown.AppendLine("Unknown Token type 2: " + token.Token);
+                }
+            }
+            return obj;
+        }
     }
 
-}
+    }

@@ -3,7 +3,7 @@
 namespace eveMarshal
 {
 
-    public class PyFloat : PyObject
+    public class PyFloat : PyRep
     {
         public double Value { get; private set; }
 
@@ -41,6 +41,10 @@ namespace eveMarshal
         public override string ToString()
         {
             return "<" + Value + ">";
+        }
+        public override string dump(string prefix)
+        {
+            return "[PyFloat " + Value + "]";
         }
     }
 

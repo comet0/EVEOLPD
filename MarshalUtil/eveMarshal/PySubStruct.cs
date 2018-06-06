@@ -1,11 +1,12 @@
 ﻿using System.IO;
+using System.Text;
 
 namespace eveMarshal
 {
 
-    public class PySubStruct : PyObject
+    public class PySubStruct : PyRep
     {
-        public PyObject Definition { get; set; }
+        public PyRep Definition { get; set; }
 
         public PySubStruct()
             : base(PyObjectType.SubStruct)
@@ -23,6 +24,15 @@ namespace eveMarshal
             output.WriteOpcode(MarshalOpcode.SubStruct);
             Definition.Encode(output);
         }
+
+        public override string dump(string prefix)
+        {
+            StringBuilder builder = new StringBuilder();
+            builder.AppendLine("[PySubStruct]");
+            PrettyPrinter.Print(builder, prefix + PrettyPrinter.Spacer, Definition);
+            return builder.ToString();
+        }
+
     }
 
 }

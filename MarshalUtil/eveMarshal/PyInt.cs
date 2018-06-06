@@ -1,20 +1,21 @@
 ﻿using System.IO;
+using System.Text;
 
 namespace eveMarshal
 {
 
-    public class PyInt : PyObject
+    public class PyInt : PyRep
     {
         public int Value { get; private set; }
 
         public PyInt()
-            : base(PyObjectType.Long)
+            : base(PyObjectType.Int)
         {
             
         }
 
         public PyInt(int val)
-            : base(PyObjectType.Long)
+            : base(PyObjectType.Int)
         {
             Value = val;
         }
@@ -63,6 +64,11 @@ namespace eveMarshal
         public override string ToString()
         {
             return "<" + Value + ">";
+        }
+
+        public override string dump(string prefix)
+        {
+            return "[PyInt " + Value + "]";
         }
     }
 

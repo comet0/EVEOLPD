@@ -5,7 +5,7 @@ using System.Text;
 namespace eveMarshal
 {
 
-    public class PyString : PyObject
+    public class PyString : PyRep
     {
         public string Value { get; private set; }
         public byte[] Raw { get; private set; }
@@ -70,7 +70,7 @@ namespace eveMarshal
             else if (op == MarshalOpcode.WStringEmpty)
                 Update(new byte[0]);
             else if (op == MarshalOpcode.WStringUCS2)
-                Update(source.ReadBytes((int)source.ReadSizeEx()), true);
+                Update(source.ReadBytes((int)source.ReadSizeEx() * 2), true);
             else if (op == MarshalOpcode.StringShort)
                 Update(source.ReadBytes(source.ReadByte()));
             else if (op == MarshalOpcode.StringLong)
@@ -126,10 +126,45 @@ namespace eveMarshal
         {
             if (Value.Length <= 0)
                 return "<empty string>";
-            if (char.IsLetterOrDigit(Value[0]))
+            if (char.IsLetterOrDigit(Value[0]) || Value[0] >= 32)
                 return "<" + Value + ">";
             return "<" + BitConverter.ToString(Raw) + ">";
         }
+
+        public override string dump(string prefix)
+        {
+            if (Raw.Length > 0 && (Raw[0] == (byte)Unmarshal.ZlibMarker || Raw[0] == (byte)Unmarshal.HeaderByte))
+            {
+                // We have serialized python data, decode and display it.
+                string pfx1 = prefix + PrettyPrinter.Spacer;
+                try
+                {
+                    Unmarshal un = new Unmarshal();
+                    PyRep obj = un.Process(Raw);
+                    if(obj != null)
+                    {
+                        string sType = "<serialized>";
+                        if(Raw[0] == Unmarshal.ZlibMarker)
+                        {
+                            sType = "<serialized-compressed>";
+                        }
+                        return "[PyString " + sType + Environment.NewLine + pfx1 + obj.dump(pfx1) + Environment.NewLine + prefix + "]";
+                    }
+                }
+                catch (Exception)
+                {
+                }
+            }
+            if (!PrettyPrinter.containsBinary(Raw))
+            {
+                return "[PyString \"" + Value + "\"]";
+            }
+            else
+            {
+                return "[PyString \"" + Value + "\"" + Environment.NewLine + prefix + "          <binary len=" + Value.Length + "> hex=\"" + PrettyPrinter.ByteArrayToString(Raw) + "\"]";
+            }
+        }
+
     }
 
 }

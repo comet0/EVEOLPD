@@ -7,7 +7,7 @@ namespace eveMarshal
     /// <summary>
     /// Used to insert raw data into the marshal stream; not an actual blue marshal opcode
     /// </summary>
-    public class PyRawData : PyObject
+    public class PyRawData : PyRep
     {
         public byte[] Data { get; set; }
 
@@ -32,6 +32,11 @@ namespace eveMarshal
         {
             output.Write(Data);
         }
+        public override string dump(string prefix)
+        {
+            return PrettyPrinter.PrintRawData(this);
+        }
+
     }
 
 }

@@ -3,7 +3,7 @@
 namespace eveMarshal
 {
 
-    public class PyNone : PyObject
+    public class PyNone : PyRep
     {
         
         public PyNone()
@@ -19,6 +19,11 @@ namespace eveMarshal
         protected override void EncodeInternal(BinaryWriter output)
         {
             output.WriteOpcode(MarshalOpcode.None);
+        }
+
+        public override string dump(string prefix)
+        {
+            return "[PyNone]";
         }
     }
 

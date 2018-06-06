@@ -4,7 +4,7 @@ using System.IO;
 namespace eveMarshal
 {
     
-    public class PyIntegerVar : PyObject
+    public class PyIntegerVar : PyRep
     {
         public byte[] Raw { get; private set; }
 
@@ -80,6 +80,11 @@ namespace eveMarshal
             output.WriteOpcode(MarshalOpcode.IntegerVar);
             output.WriteSizeEx(Raw.Length);
             output.Write(Raw);
+        }
+
+        public override string dump(string prefix)
+        {
+            return "[PyIntegerVar " + IntValue + "]";
         }
     }
 

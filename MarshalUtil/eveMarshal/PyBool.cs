@@ -3,7 +3,7 @@
 namespace eveMarshal
 {
     
-    public class PyBool : PyObject
+    public class PyBool : PyRep
     {
         public bool Value { get; set; }
 
@@ -47,6 +47,10 @@ namespace eveMarshal
         public override string ToString()
         {
             return "<" + Value + ">";
+        }
+        public override string dump(string prefix)
+        {
+            return "[PyBool " + Value + "]";
         }
     }
 

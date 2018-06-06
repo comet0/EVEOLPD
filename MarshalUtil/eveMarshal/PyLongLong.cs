@@ -3,18 +3,18 @@
 namespace eveMarshal
 {
 
-    public class PyLongLong : PyObject
+    public class PyLongLong : PyRep
     {
         public long Value { get; private set; }
 
         public PyLongLong()
-            : base(PyObjectType.LongLong)
+            : base(PyObjectType.Long)
         {
             
         }
 
         public PyLongLong(long val)
-            : base(PyObjectType.LongLong)
+            : base(PyObjectType.Long)
         {
             Value = val;
         }
@@ -33,6 +33,11 @@ namespace eveMarshal
         public override string ToString()
         {
             return "<" + Value + ">";
+        }
+
+        public override string dump(string prefix)
+        {
+            return "[PyLongLong " + Value + "]";
         }
     }
 
